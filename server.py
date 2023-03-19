@@ -1,27 +1,17 @@
 import socket
 import time
-import http.client
+import uuid
+# import threading
+from threading import Thread
+from threading import Event
 from flask import Flask, jsonify
  
 IP = '127.0.0.1'
 PORT = 6633
 DELAY = 2  # 延迟时间
+DELAY_1 = 1
 
-method='GET'
-url='diantp://127.0.0.1:6633'
-version='0.5'
-CSeq='1'
-client_port=PORT
-Session_id='1'
-ntp='0-'
-
-# 请求行
-response_line = version+" 200 OK\r\n"
-# 请求头
-response_header = "CSeq:"+CSeq+"\r\n"
-response_data = response_line + response_header
-
-
+text="This is a string that is used to test extraction every 100 bytes."*100
 class HTTPRequest:
     def __init__(self):
         self.headers = {}
@@ -38,19 +28,36 @@ class HTTPRequest:
             if line!=lines[0]:
                 linejs=line.split(':')
                 self.headers[linejs[0]] = linejs[1]
-    def res(self):
-        if self.method=='OPTIONS':
-            headers={'CSeq':self.headers['CSeq'],'OPTIONS':'SETUP,PLAY,TEARDOWN'}
-            return headers
-        elif self.method == 'SETUP':
-            headers={'CSeq':self.headers['CSeq'],'Transport':'TCP','client_port':PORT}
-            return headers
-        elif self.method == 'PLAY':
-            headers={'CSeq':self.headers['CSeq'],'Session_id':'xxx','Range':'ntp=xxx-xxx'}
-            return headers
-        elif self.method == 'TEARDOWN':
-            headers={'CSeq':self.headers['CSeq'],'Session_id':'xxx'}
-            return headers
+        
+class HTTPres:
+    def res_options(request,server,conn):
+        headers={'CSeq':request.headers['CSeq'], 'OPTIONS':'SETUP,PLAY,TEARDOWN'}
+        response_data = HTTPResponse('0.5', '200', 'OK', headers)
+        server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
+        print(response_data, "已发送")
+
+    def res_setup(request,server,conn):
+        session_id = str(uuid.uuid4())
+        headers={'CSeq':request.headers['CSeq'], 'session_id' : session_id}
+        response_data = HTTPResponse('0.5', '200', 'OK', headers)
+        server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
+
+    def res_play(request,server,conn,event):
+        for i in range(0, len(text), 100):
+            if event.is_set():
+                break
+            body = text[i:i+100].encode("utf-8")
+            headers={'CSeq':request.headers['CSeq'], 'session_id' : request.headers['session_id']}
+            response_data = HTTPResponse('0.5', '200', 'OK', headers, body)
+            server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
+            print(response_data, "已发送")
+            time.sleep(DELAY)
+
+    def res_teardown(request,server,conn):
+        headers={'CSeq':request.headers['CSeq'], 'session_id' : request.headers['session_id']}
+        response_data = HTTPResponse('0.5', '200', 'OK', headers)
+        server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
+        print(response_data, "已发送")
 
 class HTTPResponse:
     def __init__(self, version, status_code, status_text, headers=None, body=None):
@@ -59,7 +66,7 @@ class HTTPResponse:
         self.status_text = status_text
         self.headers = headers or {}
         self.body = body or b''
-        self.CSeq = CSeq
+        self.CSeq = headers['CSeq']
 
     def __str__(self):
         lines = []
@@ -115,14 +122,31 @@ def TcpServer():
         while True:
             try:
                 data = server.recv(conn, 1024).decode()  # 接收数据
+                if data=='':
+                    break
                 print("接收到:", data)
                 request = HTTPRequest()
                 request.analysis(data)
-                headers=request.res()
-                response_data = HTTPResponse('0.5', '200', 'OK', headers, body=b'<html><body>Hello, world!</body></html>')
-                server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
-                print(response_data, "已发送")
-                time.sleep(DELAY)
+                if request.method=='OPTIONS':
+                    HTTPres.res_options(request,server,conn)
+                elif request.method == 'SETUP':
+                    HTTPres.res_setup(request,server,conn)
+                    data = server.recv(conn, 1024).decode()
+                    print("接收到:", data)
+                    request = HTTPRequest()
+                    request.analysis(data)
+                    if request.method == 'PLAY':
+                        event = Event()
+                        send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event))
+                        send_thread.start()
+                        data = server.recv(conn, 1024).decode()
+                        event.set()
+                        print("接收到:", data)
+                        request_4 = HTTPRequest()
+                        request_4.analysis(data)
+                        if request_4.method == 'TEARDOWN':
+                            HTTPres.res_teardown(request_4,server,conn)
+                            server.close()
             except KeyboardInterrupt:
                 server.close()
                 print("Tcp 服务器已关闭")
