@@ -11,6 +11,7 @@ PORT = 6633
 DELAY = 2  # 延迟时间
 DELAY_1 = 1
 
+request_record={}
 text="This is a string that is used to test extraction every 100 bytes."*100
 class HTTPRequest:
     def __init__(self):
@@ -128,6 +129,10 @@ def handle_client(server, conn, addr):
                 request = HTTPRequest()
                 request.analysis(data)
                 if request.method == 'PLAY':
+                    global request_record
+                    if request.headers['session_id'] not in request_record:
+                        request_record[request.headers['session_id']]=[]
+                    request_record[request.headers['session_id']].append(data)
                     event = Event()
                     send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event))
                     send_thread.start()
@@ -138,6 +143,8 @@ def handle_client(server, conn, addr):
                     request_4.analysis(data)
                     if request_4.method == 'TEARDOWN':
                         HTTPres.res_teardown(request_4,server,conn)
+                        for i in request_record[request_4.headers['session_id']]:
+                            print(i)
         except KeyboardInterrupt:
             server.close(conn)
             print("Tcp 服务器已关闭")

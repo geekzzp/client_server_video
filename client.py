@@ -10,6 +10,7 @@ DELAY_1 = 1
 DELAY_6 = 6
 
 methods=[]
+request_record={}
 resdata=""
 class RTSPMessage:
     def __init__(self):
@@ -127,6 +128,10 @@ def TcpClient():
             request_data = HTTPRequest(methods[1], 'diantp://127.0.0.1:6633', '0.5', RTSP.get_next_cseq(), headers={'session_id':session_id,'Range':'ntp=xxx-xxx'})
             client.sendall(request_data.__str__().encode("utf-8"))
             print(request_data, "已发送")
+            global request_record
+            if request_data.headers['session_id'] not in request_record:
+                request_record[request_data.headers['session_id']]=[]
+            request_record[request_data.headers['session_id']].append(data)
             data = client.recv(1024).decode()  # 接收一个信息，并指定接收的大小 为1024字节
             print("接收到:", data)
             response = HTTPResponse()
@@ -143,6 +148,8 @@ def TcpClient():
                 response_4 = HTTPResponse()
                 response_4.analysis(data)
                 client.close()
+                for i in request_record[response_4.headers['session_id']]:
+                    print(i)
                 exit(0)
             except KeyboardInterrupt:
                 client.close()
