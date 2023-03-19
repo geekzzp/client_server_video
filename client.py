@@ -125,7 +125,7 @@ def TcpClient():
             session_id=response.headers['session_id']
             time.sleep(DELAY)
             
-            request_data = HTTPRequest(methods[1], 'diantp://127.0.0.1:6633', '0.5', RTSP.get_next_cseq(), headers={'session_id':session_id,'Range':'ntp=xxx-xxx'})
+            request_data = HTTPRequest(methods[1], 'diantp://127.0.0.1:6633', '0.5', RTSP.get_next_cseq(), headers={'session_id':session_id,'Range':'ntp=000-900'})
             client.sendall(request_data.__str__().encode("utf-8"))
             print(request_data, "已发送")
             global request_record

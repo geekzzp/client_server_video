@@ -43,8 +43,8 @@ class HTTPres:
         response_data = HTTPResponse('0.5', '200', 'OK', headers)
         server.sendall(conn, response_data.__str__().encode("utf-8"))  # 然后再发送数据
 
-    def res_play(request,server,conn,event):
-        for i in range(0, len(text), 100):
+    def res_play(request,server,conn,event,start,end):
+        for i in range(start, end, 100):
             if event.is_set():
                 break
             body = text[i:i+100].encode("utf-8")
@@ -134,7 +134,9 @@ def handle_client(server, conn, addr):
                         request_record[request.headers['session_id']]=[]
                     request_record[request.headers['session_id']].append(data)
                     event = Event()
-                    send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event))
+                    start = int(request.headers['Range'][4:7:])
+                    end = int(request.headers['Range'][8:11:])
+                    send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event,start,end))
                     send_thread.start()
                     data = server.recv(conn, 1024).decode()
                     event.set()
