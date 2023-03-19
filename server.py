@@ -100,8 +100,8 @@ class Server:
     def sendall(self, client_sock, data):
         client_sock.sendall(data)
 
-    def close(self):
-        self.sock.close()
+    def close(self, client_sock):
+        client_sock.close()
 
 def options():
     # 返回可用的方法列表
@@ -109,6 +109,40 @@ def options():
     resp = jsonify({'Allow': allowed_methods})
     resp.headers['Allow'] = ', '.join(allowed_methods)
     return resp
+
+def handle_client(server, conn, addr):
+    while True:
+        try:
+            data = server.recv(conn, 1024).decode()  # 接收数据
+            if data=='':
+                break
+            print("接收到:", data)
+            request = HTTPRequest()
+            request.analysis(data)
+            if request.method=='OPTIONS':
+                HTTPres.res_options(request,server,conn)
+            elif request.method == 'SETUP':
+                HTTPres.res_setup(request,server,conn)
+                data = server.recv(conn, 1024).decode()
+                print("接收到:", data)
+                request = HTTPRequest()
+                request.analysis(data)
+                if request.method == 'PLAY':
+                    event = Event()
+                    send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event))
+                    send_thread.start()
+                    data = server.recv(conn, 1024).decode()
+                    event.set()
+                    print("接收到:", data)
+                    request_4 = HTTPRequest()
+                    request_4.analysis(data)
+                    if request_4.method == 'TEARDOWN':
+                        HTTPres.res_teardown(request_4,server,conn)
+        except KeyboardInterrupt:
+            server.close(conn)
+            print("Tcp 服务器已关闭")
+            exit(0)
+    server.close(conn)
 
 # 将数据返回客户端的Tcp服务器
 def TcpServer():
@@ -119,39 +153,9 @@ def TcpServer():
     while True:  # conn就是客户端链接过来而在服务端为期生成的一个链接实例
         conn, addr = server.accept()  # 等待链接
         print("连接成功:", conn, addr)
-        while True:
-            try:
-                data = server.recv(conn, 1024).decode()  # 接收数据
-                if data=='':
-                    break
-                print("接收到:", data)
-                request = HTTPRequest()
-                request.analysis(data)
-                if request.method=='OPTIONS':
-                    HTTPres.res_options(request,server,conn)
-                elif request.method == 'SETUP':
-                    HTTPres.res_setup(request,server,conn)
-                    data = server.recv(conn, 1024).decode()
-                    print("接收到:", data)
-                    request = HTTPRequest()
-                    request.analysis(data)
-                    if request.method == 'PLAY':
-                        event = Event()
-                        send_thread = Thread(target=HTTPres.res_play, args=(request,server,conn,event))
-                        send_thread.start()
-                        data = server.recv(conn, 1024).decode()
-                        event.set()
-                        print("接收到:", data)
-                        request_4 = HTTPRequest()
-                        request_4.analysis(data)
-                        if request_4.method == 'TEARDOWN':
-                            HTTPres.res_teardown(request_4,server,conn)
-                            server.close()
-            except KeyboardInterrupt:
-                server.close()
-                print("Tcp 服务器已关闭")
-                exit(0)
- 
+        t = Thread(target=handle_client, args=(server, conn, addr))
+        t.start()
+
  
 if __name__ == "__main__":
     TcpServer()

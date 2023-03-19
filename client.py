@@ -146,7 +146,7 @@ def TcpClient():
                 exit(0)
             except KeyboardInterrupt:
                 client.close()
-                print("Tcp 服务器已关闭")
+                print("Tcp 客户端已关闭")
                 exit(0)
         except KeyboardInterrupt:
             client.close()
